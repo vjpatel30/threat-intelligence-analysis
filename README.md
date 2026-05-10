@@ -2,92 +2,133 @@
 
 ## Overview
 
-This project demonstrates how structured threat intelligence (STIX/TAXII) is consumed, analyzed, and operationalized in a SOC context. Using STIX-formatted threat data, this investigation mapped relationships between indicators of compromise, malware families, and threat actor TTPs — then translated those findings into actionable detection guidance and KQL-style hunting queries relevant to a Microsoft Sentinel environment.
+This project demonstrates how structured threat intelligence (STIX/TAXII) is consumed, analyzed, and operationalized in a SOC context. Using the OASIS CTI STIX Visualization tool, this investigation mapped relationships between indicators of compromise, malware families, and threat actor TTPs — then translated those findings into actionable detection guidance and KQL-style hunting queries relevant to a Microsoft Sentinel environment.
 
 ---
 
 ## Objective
 
-- Parse and analyze STIX-formatted threat intelligence data
+- Parse and analyze STIX 2.1 formatted threat intelligence data
 - Map relationships between IOCs, malware, and threat actors
 - Extract actionable intelligence to support alert triage and threat hunting
-- Produce detection guidance and hunting queries based on indicator data
+- Produce detection guidance and hunting queries based on real indicator data
 - Demonstrate how threat intel feeds accelerate SOC analyst decision-making
 
 ---
 
 ## Tools Used
 
-- STIX Visualization Tool (OASIS)
-- STIX/TAXII threat intelligence format
+- OASIS CTI STIX Visualization Tool (oasis-open.github.io/cti-stix-visualization)
+- STIX 2.1 threat intelligence format
 - MITRE ATT&CK Framework
 - KQL (Kusto Query Language) — detection query development
-- JSON/STIX data analysis
+- Mandiant Attack Lifecycle Model
 
 ---
 
 ## Environment
 
-This lab used publicly available STIX threat intelligence examples to simulate the consumption and analysis of a threat intelligence feed — replicating the workflow a SOC analyst would use when integrating external TI into a SIEM or threat hunting workflow.
+This lab used STIX 2.1 formatted threat intelligence data loaded into the OASIS CTI STIX Visualization tool to simulate the consumption and analysis of a threat intelligence feed — replicating the workflow a SOC analyst would use when integrating external TI into a SIEM or threat hunting workflow.
 
 ---
 
 ## Investigation Walkthrough
 
 ### Step 1 — Load and Visualize STIX Data
-Imported STIX bundle into the OASIS visualization tool. Identified the following object types present in the dataset:
-- **Indicators** (malicious URLs)
-- **Malware** (classified by type and behavior)
-- **Threat Actors** (with TTP descriptions)
-- **Relationships** (linking actors to malware to indicators)
+Imported STIX 2.1 bundle into the OASIS visualization tool. The graph revealed the following objects and relationships:
 
-### Step 2 — Analyze the Relationship Graph
-Reviewed the object relationship graph to understand the campaign structure. A single threat actor was linked to multiple malware samples, which were linked to specific URL-based indicators used for delivery or C2. Relationship types included uses, indicates, and attributed-to.
+**Objects identified:**
+- **Threat Actor:** Adversary Bravo (spy, criminal)
+- **Malware:** Poison Ivy Variant d1c6 (remote-access-trojan)
+- **Attack Pattern:** Phishing
+- **Identity:** Adversary Bravo(2)
+- **Indicator:** Malicious site hosting downloader
+- **Malware:** x4z9arb backdoor
 
-**Analyst conclusion:** The graph revealed a campaign pattern where the threat actor used consistent malware tooling across multiple targets, with indicators pointing to shared C2 infrastructure — a pattern that supports proactive blocking and indicator enrichment across alerts.
+**Relationships mapped:**
+- Adversary Bravo **uses** → Poison Ivy Variant d1c6
+- Adversary Bravo **uses** → Phishing
+- Adversary Bravo **attributed-to** → Adversary Bravo(2)
+- Malicious site hosting downloader **indicates** → x4z9arb backdoor
+
+### Step 2 — Threat Actor Analysis
+Selected the Adversary Bravo node and reviewed full object details.
+
+**Threat Actor details:**
+- **Name:** Adversary Bravo
+- **ID:** threat-actor--9a8a0d25-7636-429b-a99e-b2a73cd0f11f
+- **Type:** threat-actor
+- **Threat actor types:** spy, criminal
+- **Created/Modified:** 2015-05-07T14:22:14.760Z
+- **Description:** "Adversary Bravo is known to use phishing attacks to deliver remote access malware to the targets."
+- **Outgoing relationships:** uses attack-pattern (Phishing), attributed-to identity
+
+**SOC application:** Adversary Bravo's confirmed use of phishing for RAT delivery means any phishing alerts in the environment should be treated as elevated priority — successful delivery could result in a full remote access trojan implant on the target endpoint.
 
 ### Step 3 — Malware Analysis
-Reviewed malware object details:
-- Malware type classified as trojan with remote access capability
-- Description referenced capability to exfiltrate data and establish persistence
-- In a real environment, hashes would be cross-referenced against VirusTotal or Microsoft Defender TI
+Selected the Poison Ivy Variant d1c6 node and reviewed full object details.
 
-**SOC application:** Malware classification and capability description helps analysts prioritize severity when this family appears in endpoint alerts — remote access trojans with persistence should be treated as high severity and escalated immediately.
+**Malware details:**
+- **Name:** Poison Ivy Variant d1c6
+- **ID:** malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4
+- **Malware type:** remote-access-trojan
+- **is_family:** false (specific variant, not a malware family)
+- **Created/Modified:** 2015-04-23T11:12:34.760Z
+- **Kill chain:** mandiant-attack-lifecycle-model — phase: initial-compromise
 
-### Step 4 — Threat Actor Profiling
-Reviewed threat actor object:
-- Actor described as financially motivated targeting enterprise environments
-- TTPs referenced credential access and lateral movement consistent with MITRE ATT&CK T1078 (Valid Accounts) and T1021 (Remote Services)
-- Sophistication level and resource rating noted from STIX object attributes
+**SOC application:** Poison Ivy is a well-documented RAT with capabilities including keylogging, screen capture, file exfiltration, and reverse shell access. Classification at the initial-compromise phase of the Mandiant lifecycle means this malware is used for initial foothold establishment — detection should focus on delivery mechanisms (phishing emails, malicious URLs) and post-execution C2 behavior.
 
-**SOC application:** Knowing the actor's primary TTPs allows analysts to prioritize detection rules around those specific techniques and elevate alerts that match the actor's known behavior patterns.
+### Step 4 — Indicator Analysis
+Selected the Malicious site hosting downloader indicator node.
 
-### Step 5 — Indicator Analysis and Detection Development
-Reviewed malicious URL indicator objects and translated them into detection logic applicable to a Microsoft Sentinel environment.
+**Indicator details:**
+- **Name:** Malicious site hosting downloader
+- **ID:** indicator--d81f86b9-975b-4c0b-875e-810c5ad45a4f
+- **Indicator type:** malicious-activity
+- **Pattern:** `[url:value = 'http://x4z9arb.cn/4712/']`
+- **Pattern type:** stix
+- **Valid from:** 2014-06-29T13:49:37.079Z
+- **Description:** "This organized threat actor group operates to create profit from all types of crime."
+- **Relationship:** indicates → x4z9arb backdoor (malware)
 
-**KQL hunting query — malicious URL indicator from STIX feed:**
+**SOC application:** The URL `http://x4z9arb.cn/4712/` is a confirmed malicious indicator linked to a downloader that delivers the x4z9arb backdoor. Any connection to this URL from an endpoint in the environment should be treated as a critical alert and escalated immediately.
+
+### Step 5 — Detection Development
+Translated STIX indicator and TTP data into KQL detection queries for Microsoft Sentinel.
+
+**KQL query — hunt for connections to known malicious URL:**
 ```kql
 DeviceNetworkEvents
-| where RemoteUrl has_any ("malicious-domain.example.com", "c2-endpoint.example.net")
+| where RemoteUrl has "x4z9arb.cn"
+   or RemoteUrl has "x4z9arb.cn/4712/"
 | where ActionType == "ConnectionSuccess"
-| project Timestamp, DeviceName, RemoteUrl, RemoteIP, InitiatingProcessFileName
+| project Timestamp, DeviceName, RemoteUrl, RemoteIP, InitiatingProcessFileName, InitiatingProcessAccountName
 | order by Timestamp desc
 ```
 
-**KQL alert rule — threat actor TTP (T1078 - Valid Accounts):**
+**KQL query — detect phishing-delivered executable (Poison Ivy TTP):**
 ```kql
-let activeAccounts = SigninLogs
-| where TimeGenerated > ago(30d)
-| summarize by UserPrincipalName;
-SigninLogs
-| where TimeGenerated > ago(1d)
-| where UserPrincipalName !in (activeAccounts)
-| where ResultType == 0
-| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName
+DeviceProcessEvents
+| where InitiatingProcessFileName in~ ("outlook.exe", "winword.exe", "excel.exe")
+| where FileName endswith ".exe" or FileName endswith ".dll"
+| where ProcessCommandLine has_any ("http://", "https://", "cmd.exe", "powershell")
+| project Timestamp, DeviceName, InitiatingProcessFileName, FileName, ProcessCommandLine, AccountName
+| order by Timestamp desc
 ```
 
-### Step 6 — Threat Intel Report Production
-Produced a structured threat intelligence report documenting malware classifications, threat actor TTP mapping to MITRE ATT&CK, IOC list with context, detection recommendations, and defensive priorities based on actor behavior.
+**KQL alert rule — detect RAT-style outbound C2 behavior:**
+```kql
+DeviceNetworkEvents
+| where RemotePort in (443, 80, 8080, 4444)
+| where ActionType == "ConnectionSuccess"
+| where InitiatingProcessFileName !in~ ("chrome.exe", "firefox.exe", "msedge.exe", "svchost.exe")
+| summarize ConnectionCount = count(), DestinationIPs = make_set(RemoteIP) by DeviceName, InitiatingProcessFileName, bin(Timestamp, 1h)
+| where ConnectionCount > 20
+| order by ConnectionCount desc
+```
+
+### Step 6 — Threat Intelligence Report
+Produced a structured threat intelligence report documenting the full campaign: Adversary Bravo uses phishing to deliver Poison Ivy Variant d1c6 (remote-access-trojan) at the initial-compromise phase, with infrastructure including the malicious downloader URL `http://x4z9arb.cn/4712/` linking to the x4z9arb backdoor.
 
 ---
 
@@ -95,10 +136,10 @@ Produced a structured threat intelligence report documenting malware classificat
 
 | Technique | ID | Source |
 |---|---|---|
-| Valid Accounts | T1078 | Threat actor TTP from STIX object |
-| Remote Services | T1021 | Threat actor TTP from STIX object |
-| Phishing: Malicious Link | T1566.002 | URL indicator pattern in STIX data |
-| Command and Scripting Interpreter | T1059 | Malware behavior description |
+| Phishing | T1566 | Adversary Bravo confirmed attack pattern (STIX object) |
+| Remote Access Tools | T1219 | Poison Ivy Variant d1c6 — remote-access-trojan |
+| Command and Control | T1071 | x4z9arb backdoor C2 via malicious URL |
+| Drive-by Compromise | T1189 | Malicious site hosting downloader indicator |
 
 ---
 
@@ -106,13 +147,17 @@ Produced a structured threat intelligence report documenting malware classificat
 
 | Finding | Detail |
 |---|---|
-| Threat Actor Motivation | Financial |
-| Malware Type | Trojan (Remote Access) |
-| Indicator Type | Malicious URLs (C2/delivery) |
-| Primary TTPs | T1078, T1021, T1566.002 |
-| Campaign Pattern | Shared C2 infrastructure across targets |
-| Detection Queries Produced | 2 (KQL - Sentinel-compatible) |
-| SOC Recommendation | Block indicators, prioritize RAT-related endpoint alerts, hunt for T1078 activity |
+| Threat Actor | Adversary Bravo |
+| Actor Types | Spy, Criminal |
+| Actor Description | Uses phishing to deliver remote access malware |
+| Malware | Poison Ivy Variant d1c6 |
+| Malware Type | Remote-Access-Trojan |
+| Kill Chain Phase | Initial Compromise (Mandiant model) |
+| Malicious URL | http://x4z9arb.cn/4712/ |
+| URL Indicates | x4z9arb backdoor |
+| Valid From | 2014-06-29 |
+| Detection Queries Produced | 3 (KQL — Sentinel-compatible) |
+| SOC Recommendation | Block x4z9arb.cn, prioritize phishing alerts, hunt for RAT C2 behavior |
 
 ---
 
@@ -121,10 +166,10 @@ Produced a structured threat intelligence report documenting malware classificat
 ### STIX Relationship Graph
 ![STIX Relationship Graph](stix-relationship-graph.png)
 
-### Malware Details
+### Malware Details — Poison Ivy Variant d1c6
 ![Malware Details](stix-malware-details.png)
 
-### Threat Actor Details
+### Threat Actor Details — Adversary Bravo
 ![Threat Actor Details](stix-threat-actor-details.png)
 
 ### Indicator URL Details
@@ -134,9 +179,10 @@ Produced a structured threat intelligence report documenting malware classificat
 
 ## Skills Demonstrated
 
-- Threat intelligence consumption and analysis (STIX/TAXII)
-- IOC extraction and enrichment
+- Threat intelligence consumption and analysis (STIX 2.1)
+- IOC extraction and indicator pattern analysis
 - Threat actor profiling and TTP mapping
+- Malware classification and kill chain mapping
 - MITRE ATT&CK framework application
 - KQL detection query development (Microsoft Sentinel)
 - Threat hunting query construction
